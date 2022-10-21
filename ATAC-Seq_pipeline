@@ -1,0 +1,385 @@
+#This ATAC-seq pipeline has been adapted for use on commandline on the Easley HPC at Auburn University. 
+#Credit to Prof. Dr. Steven Van Belleghem (github.com/StevenVB12/) for the entirety of the code and help in troubleshooting.
+#These scripts are made to run on many files at once and are submitted as > sbatch -a 1-14 script1.sh 
+#All code should be reproducible for different samples of atac or chip-seq. Only sample names and paths should be changed unless different parameters
+#are desired for specific programs (ie samtools, bowtie). 
+#if running on different HPC you may want to check that you have all programs needed (see below)
+
+#     Modules/Programs required
+# trimmomatic/0.39
+# java/15.0.1
+# bowtie2
+# samtools/1.15
+# bedtools
+# libpng
+# MACS2 (included in python/3.9.2)
+
+################################################ Script 1  ################################################
+
+#!/bin/bash
+#SBATCH --mem-per-cpu=100gb
+#SBATCH --time=24:00:00
+#SBATCH --job-name=cat
+#SBATCH --error=cat
+#SBATCH --output=cat
+#SBATCH --partition=bac0071_amd
+#SBATCH --ntasks=1
+
+ID=$((SLURM_ARRAY_TASK_ID -1))
+
+#24
+samples=(erato6_HW eratoHW_2 eratoHW_5 eratoFW_1 eratoFW_2 eratoFW_3 eratoFW_4 eratoFW_5 hydFW_2 hydFW_4 hydFW_5 hydHW_4 hydHW_5 hydHW_6)
+
+cd /home/jgo0012/ATAC
+
+FILES=""
+
+for f in /home/jgo0012/ATAC/Run/FASTQ_Generation_2020-11-14_12_51_32Z-341995655/$(echo "${samples[ID]}")*/*R1*; do FILES="$FILES $f"; done
+
+echo $FILES
+zcat $FILES | gzip > /home/jgo0012/ATAC/FastQ_ALL/$(echo "${samples[ID]}")_R1.fastq.gz
+
+FILES=""
+
+for f in /home/jgo0012/ATAC/Run/FASTQ_Generation_2020-11-14_12_51_32Z-341995655/$(echo "${samples[ID]}")*/*R2*; do FILES="$FILES $f"; done
+
+echo $FILES
+zcat $FILES | gzip > /home/jgo0012/ATAC/FastQ_ALL/$(echo "${samples[ID]}")_R2.fastq.gz
+
+
+
+################################################ SCRIPT 2 ################################################
+
+#!/bin/bash
+#SBATCH --mem-per-cpu=100gb
+#SBATCH --time=24:00:00
+#SBATCH --job-name=trim
+#SBATCH --error=trim
+#SBATCH --output=trim
+#SBATCH --partition=bac0071_amd
+#SBATCH --ntasks=1
+
+ID=$((SLURM_ARRAY_TASK_ID -1))
+
+module load jdk
+module load trimmomatic/0.39
+module load java/15.0.1
+
+#1-14
+samples=(erato6_HW eratoHW_2 eratoHW_5 eratoFW_1 eratoFW_2 eratoFW_3 eratoFW_4 eratoFW_5 hydFW_2 hydFW_4 hydFW_5 hydHW_4 hydHW_5 hydHW_6)
+
+java -jar /tools/trimmomatic-0.39/trimmomatic-0.39.jar PE -threads 1 -phred33 \
+/home/jgo0012/ATAC/FastQ_ALL/$(echo "${samples[ID]}")_R1.fastq.gz \
+/home/jgo0012/ATAC/FastQ_ALL/$(echo "${samples[ID]}")_R2.fastq.gz \
+/home/jgo0012/ATAC/FastQ_trimmed/$(echo "${samples[ID]}")_trim_R1.fastq.gz \
+/home/jgo0012/ATAC/FastQ_trimmed/$(echo "${samples[ID]}")_trim_unpair_R1.fastq.gz \
+/home/jgo0012/ATAC/FastQ_trimmed/$(echo "${samples[ID]}")_trim_R2.fastq.gz \
+/home/jgo0012/ATAC/FastQ_trimmed/$(echo "${samples[ID]}")_trim_unpair_R2.fastq.gz \
+ILLUMINACLIP:/home/jgo0012/ATAC/scripts/TruSeq3-PE.fa:2:30:10:2:keepBothReads LEADING:3 TRAILING:3 MINLEN:32
+
+
+################################################ SCRIPT 3 ################################################
+# BOWTIE
+
+#!/bin/bash
+#SBATCH --mem-per-cpu=25gb
+#SBATCH --time=24:00:00
+#SBATCH --job-name=Bowtie
+#SBATCH --error=Bowtie
+#SBATCH --output=Bowtie
+#SBATCH --partition=bac0071_amd
+#SBATCH --ntasks=1
+ 
+module load bowtie2
+module load samtools/1.15
+module --ignore-cache load "jdk"
+ 
+ID=$((SLURM_ARRAY_TASK_ID -1))
+ 
+#1-14
+samples=(erato6_HW eratoHW_2 eratoHW_5 eratoFW_1 eratoFW_2 eratoFW_3 eratoFW_4 eratoFW_5 hydFW_2 hydFW_4 hydFW_5 hydHW_4 hydHW_5 hydHW_6)
+ 
+REF=/home/jgo0012/ATAC/REFlat/Hel_final_2016_new_bowtie
+ 
+REFNAME=Hel_final_2016_new
+ 
+
+#### Run bowtie
+
+# gunzip /home/jgo0012/ATAC/FastQ_trimmed/$(echo "${samples[ID]}")_trim_R1.fastq.gz
+# gunzip /home/jgo0012/ATAC/FastQ_trimmed/$(echo "${samples[ID]}")_trim_R2.fastq.gz
+
+bowtie2 -t -k 2 -p 8 --local -x $REF \
+-1 /home/jgo0012/ATAC/FastQ_trimmed/$(echo "${samples[ID]}")_trim_R1.fastq \
+-2 /home/jgo0012/ATAC/FastQ_trimmed/$(echo "${samples[ID]}")_trim_R2.fastq |\
+samtools view -bS - > /home/jgo0012/ATAC/BAM/$(echo "${samples[ID]}")_$REFNAME.trim.bam
+ 
+gzip /home/jgo0012/ATAC/FastQ_trimmed/$(echo "${samples[ID]}")_trim_R1.fastq
+gzip /home/jgo0012/ATAC/FastQ_trimmed/$(echo "${samples[ID]}")_trim_R2.fastq
+ 
+#### filter bam files
+ 
+samtools view -f 0x02 -q 20 -b /home/jgo0012/ATAC/BAM/$(echo "${samples[ID]}")_$REFNAME.trim.bam > /home/jgo0012/ATAC/BAM/$(echo "${samples[ID]}")_$REFNAME.trim.filtered.bam
+ 
+samtools sort /home/jgo0012/ATAC/BAM/$(echo "${samples[ID]}")_$REFNAME.trim.filtered.bam > /home/jgo0012/ATAC/BAM/$(echo "${samples[ID]}")_$REFNAME.trim.filtered.sorted.bam
+ 
+java -jar /tools/picard-2.23.9/libs/picard.jar MarkDuplicates \
+I=/home/jgo0012/ATAC/BAM/$(echo "${samples[ID]}")_$REFNAME.trim.filtered.sorted.bam \
+O=/home/jgo0012/ATAC/BAM/$(echo "${samples[ID]}")_$REFNAME.trim.filtered.sorted.nd.bam \
+Remove_Duplicates=true  M=/home/jgo0012/ATAC/BAM/$(echo "${samples[ID]}")_dup_metrics.txt ASSUME_SORTED=true
+
+rm /home/jgo0012/ATAC/BAM/$(echo "${samples[ID]}")_$REFNAME.trim.filtered.bam
+rm /home/jgo0012/ATAC/BAM/$(echo "${samples[ID]}")_$REFNAME.trim.filtered.sorted.bam
+
+
+#indexing files so its ready for when Counting Reads in Peaks (later script)
+
+cd /home/jgo0012/ATAC/BAM
+
+for f in *sorted.nd.bam; do samtools index $f; done
+
+
+################################################ SCRIPT 4 ################################################
+
+#!/bin/bash
+#SBATCH --mem-per-cpu=25gb
+#SBATCH --time=8:00:00
+#SBATCH --job-name=bw
+#SBATCH --error=errorbw
+#SBATCH --output=bw
+#SBATCH --partition=bac0071_amd
+#SBATCH --ntasks=1
+ 
+module load bedtools
+module load libpng
+ 
+ID=$((SLURM_ARRAY_TASK_ID -1))
+ 
+#1-14
+samples=(erato6_HW eratoHW_2 eratoHW_5 eratoFW_1 eratoFW_2 eratoFW_3 eratoFW_4 eratoFW_5 hydFW_2 hydFW_4 hydFW_5 hydHW_4 hydHW_5 hydHW_6)
+ 
+REF=/home/jgo0012/ATAC/REFlat/Hel_final_2016_new_bowtie
+ 
+REFNAME=Hel_final_2016_new
+ 
+SIZES=/home/jgo0012/ATAC/REFlat/Hel_final_2016.fa.sizes 
+ 
+#### get coverage data
+ 
+bedtools genomecov \
+-ibam /home/jgo0012/ATAC/BAM/$(echo "${samples[ID]}")_$REFNAME.trim.filtered.sorted.nd.bam -bg \
+> /home/jgo0012/ATAC/BW/$(echo "${samples[ID]}")_$REFNAME.trim.filtered.sorted.nd.bdg
+ 
+LC_COLLATE=C sort -k1,1 -k2,2n /home/jgo0012/ATAC/BW/$(echo "${samples[ID]}")_$REFNAME.trim.filtered.sorted.nd.bdg \
+> /home/jgo0012/ATAC/BW/$(echo "${samples[ID]}")_$REFNAME.trim.filtered.sorted.nd.collate.bdg
+ 
+rm /home/jgo0012/ATAC/BW/$(echo "${samples[ID]}")_$REFNAME.trim.filtered.sorted.nd.bdg
+
+/home/jgo0012/ATAC/BW/bedGraphToBigWig2 \
+/home/jgo0012/ATAC/BW/$(echo "${samples[ID]}")_$REFNAME.trim.filtered.sorted.nd.collate.bdg \
+$SIZES \
+/home/jgo0012/ATAC/BW/$(echo "${samples[ID]}")_$REFNAME.trim.filtered.sorted.nd.collate.bw
+
+
+###### We can now visualise our ATAC or CHIP-seq data on IGV viewer (downloaded seperately onto desktop) using our newly created .BW files.
+###### bedgraph files (bdg) also work but are so large theyll crash the program (atleast in 2022). 
+
+################################################ SCRIPT 5 ################################################
+#Running MACS2
+ 
+#!/bin/bash
+#SBATCH --mem-per-cpu=20gb
+#SBATCH --time=36:00:00
+#SBATCH --job-name=macs2
+#SBATCH --error=errmacs2
+#SBATCH --output=macs2
+#SBATCH --partition=bac0071_amd
+#SBATCH --ntasks=1
+
+module load python/3.9.2
+
+
+ID=$((SLURM_ARRAY_TASK_ID -1))
+
+#14
+samples=(erato6_HW eratoHW_2 eratoHW_5 eratoFW_1 eratoFW_2 eratoFW_3 eratoFW_4 eratoFW_5 hydFW_2 hydFW_4 hydFW_5 hydHW_4 hydHW_5 hydHW_6)
+
+macs2 callpeak \
+-t /home/jgo0012/ATAC/BAM/$(echo "${samples[ID]}")_Hel_final_2016_new.trim.filtered.sorted.nd.bam \
+-n $(echo "${samples[ID]}") --outdir /home/jgo0012/ATAC/MACS2_sub/ \
+-f BAMPE -g 382844248 --nomodel --shift -100 --extsize 200
+
+
+ ################################################ SCRIPT 6  ################################################
+ 
+ 
+ 
+ #!/bin/bash
+#SBATCH --mem-per-cpu=25gb
+#SBATCH --time=36:00:00
+#SBATCH --job-name=combiningpeaksmacs2
+#SBATCH --error=comb.macs2
+#SBATCH --output=comb.macs2
+#SBATCH --partition=bac0071_amd
+#SBATCH --ntasks=1
+
+
+cd /home/jgo0012/ATAC/MACS2_sub
+
+module load bedtools
+
+## make sample list command
+#echo combining all bed files melpomene
+#14
+sampleList1=(erato6_HW eratoHW_2 eratoHW_5 eratoFW_1 eratoFW_2 eratoFW_3 eratoFW_4 eratoFW_5 hydFW_2 hydFW_4 hydFW_5 hydHW_4 hydHW_5 hydHW_6)
+
+
+ALL_LIST=""
+for FILE in ${sampleList1[*]}
+do
+ALL_LIST="$ALL_LIST $FILE"_peaks.narrowPeak""
+done
+
+eval command=\$$(echo ALL_LIST)
+
+## cat bed files
+cat $(echo $command) > H_e_lat_peaks.bed
+
+## sort bed files
+#echo sorting bed files erato
+sort -k1,1 -k2,2n H_e_lat_peaks.bed > H_e_lat_peaks.sort.bed
+
+## merge overlapping peaks
+#echo merging overlapping peaks erato
+bedtools merge -i H_e_lat_peaks.sort.bed -c 1 -o count | awk '$4>1' | cut -d$'\t' -f 1-3 > H_e_lat_peaks_m1.merged.sort.bed
+
+
+################################################ SCRIPT 7 ################################################
+ 
+ #!/bin/bash
+#SBATCH --mem-per-cpu=24gb
+#SBATCH --time=72:00:00
+#SBATCH --job-name=countreadsinpeaks
+#SBATCH --error=errcountreadsinpeaks
+#SBATCH --output=countingreadsinpeaks
+#SBATCH --partition=bac0071_amd
+#SBATCH --ntasks=1
+
+
+module load bedtools
+module load samtools
+
+#13  deleted eratoFW_1 because it failed and it was blocking the whole pipeline
+sampleList1=(erato6_HW eratoHW_2 eratoHW_5 eratoFW_2 eratoFW_3 eratoFW_4 eratoFW_5 hydFW_2 hydFW_4 hydFW_5 hydHW_4 hydHW_5 hydHW_6)
+
+
+## make sample list command
+ALL_LIST1=""
+for FILE in ${sampleList1[*]}
+do
+ALL_LIST1="$ALL_LIST1 /home/jgo0012/ATAC/BAM/${FILE}_Hel_final_2016_new.trim.filtered.sorted.nd.bam"
+done
+echo $ALL_LIST1l
+
+eval command1=\$$(echo ALL_LIST1)
+
+# count reads in peaks
+bedtools multicov -bams $(echo $command1) -bed /home/jgo0012/ATAC/MACS2_sub/H_e_lat_peaks_m1.merged.sort.bed > /home/jgo0012/ATAC/counts_sub/H_e_lat_peaks_m1.counts
+
+
+
+############ The above script will have created a .counts file which we will save to our local working directory and access using R.
+
+############ R SCRIPT which will use the counts.file ##############
+
+setwd("~/Desktop/PhD/Chapter II/ATAC/Scripts/DESeq2 Script & results/2022")
+
+# load DESeq2 library
+library(DESeq2)
+# load  library
+library(dplyr)
+
+# read in counts table
+cts <- read.table('H_e_lat_peaks_m1.counts.gz', h=F)
+
+# read in sample info (sample IDs and tissue, ... make sure this is in the same order as you counts table column names
+sampleInfo <- read.table('counts_samples_hyd_erato.txt', sep = '\t', h=F)
+
+colnames(sampleInfo) <- c('id', 'day', 'tissue', 'species', 'X')
+
+# add header to counts
+header <- c('scaffold','start','end',as.character(sampleInfo$id))
+
+colnames(cts) <- header
+
+# getting the counts table in the right format for DESeq2
+cts1 <- cts[,c(1:3)]
+cts2 <- cts[,c(4:ncol(cts))]
+
+cts <- cbind(paste(cts1$scaf,cts1$start,cts1$end, sep='_'), cts2)
+colnames(cts) <- c('peak', as.character(sampleInfo$id))
+head(cts)
+
+ctsF <- cts[,-1]
+rownames(ctsF) <- cts[,1]
+head(ctsF)
+
+# select the samples you want to compare (here HW between hydara and erato)
+#sampleInfo_sub <- subset(sampleInfo, (sampleInfo$tissue == 'HW')) 
+
+
+# select the samples you want to compare (here HW vs FW in H.e.erato and design changed to tissue in specify deseq model)
+sampleInfo_sub <- subset(sampleInfo, (sampleInfo$species == 'H.e.erato'))
+
+
+# select those samples from the counts table
+ctsF2 <- select(ctsF, c(as.character(sampleInfo_sub$id)))
+head(ctsF2)
+
+# specify DESeq model
+dds <- DESeqDataSetFromMatrix(countData = ctsF2,
+                              colData = sampleInfo_sub,
+                              design = ~tissue)
+
+# run DESeq
+atacDDS <- DESeq(dds)
+res <- results(atacDDS)
+res
+subset(res, res$padj < 0.05)
+summary(res)
+
+res_sign_up <- subset(res, res$log2FoldChange >1 & res$padj <= 0.05)
+summary(res_sign_up)
+
+res_sign_up$scafnames <- rownames(res_sign_up)
+
+
+#Volcano plot
+plot(res_sign_up$log2FoldChange, -log(res$pvalue), pch = 19)
+
+
+
+#Write table
+
+write.table(res_sign_up, file = "erato_HWvsFW_0.05.txt", quote = F)
+
+##### End of script #######
+
+#The product table should look like the following: 
+
+
+baseMean log2FoldChange lfcSE stat pvalue padj scafnames
+Herato0101_1137535_1138362 357.255365762134 1.87201121558009 0.358781305115641 5.21769442523409 1.81164018025795e-07 0.000232136140328283 Herato0101_1137535_1138362
+Herato0101_10516736_10517101 69.9477999739211 1.33044469756648 0.262152915792054 5.07507114138614 3.87351050598673e-07 0.000439933955717443 Herato0101_10516736_10517101
+Herato0101_18797486_18797934 103.691356610064 1.73243070186973 0.37385251483312 4.63399504653073 3.58675579916896e-06 0.00275755303925954 Herato0101_18797486_18797934
+Herato0211_1629189_1629450 69.3393851196416 1.7187995489703 0.299287650866657 5.74296849199463 9.30310426032399e-09 1.603117342073e-05 Herato0211_1629189_1629450
+Herato0214_290484_291371 79.1188839534547 1.4485476061288 0.306921012246817 4.71961041547693 2.36296757363299e-06 0.00193581276323215 Herato0214_290484_291371
+Herato0301_149221_149544 51.8923617271636 1.40387203640838 0.313561118042571 4.47718787703069 7.56326863430274e-06 0.00484563107002578 Herato0301_149221_149544
+Herato0301_370880_371125 79.9904246933147 1.8964706211992 0.422605103787575 4.48757150399317 7.20396372310214e-06 0.00473689051492872 Herato0301_370880_371125
+Herato0310_2877149_2877414 145.576963613648 2.06277590109628 0.401273468885109 5.14057385061479 2.73900639879904e-07 0.000333844796993132 Herato0310_2877149_2877414
+[...] Continued.
+
+
+#Here are coordinates of peaks with differential accessibility that have been found using a cut off point of p < 0.05
+# and that can now be plotted on IGV viewer. 
+
