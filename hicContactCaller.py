@@ -1,3 +1,37 @@
+### SEE JGO's README below: ### 
+
+###  The following .sh script is run to submit the python script HicContactCaller.py as a sbatch job that can be nohuped and ran in the background requesting 
+###  with easibly configurable memory requests, time or even changes in partitions when submitting many samples at once and memory demand is high. 
+
+###  !/usr/bin/env bash
+#### SBATCH --partition=bac0071_amd
+#### SBATCH --mail-type=END,FAIL
+
+# cd to working directory
+
+## This script runs hicontactcaller on the 8 chunks ive divided the PeakFile into, this was necessary because the memory task was too intensive if ran on the whole file.
+## the output has no headers or tails so its easy to cat together into a combined output file once each job is finished. Ive checked the formatting on the lines where the catted files were combined: its sound.
+
+#SAMPLES=(aa ab ac ad ae af)
+
+#for ID in ${SAMPLES[@]};
+#do
+  	#sbatch --job-name=chunk_contact_caller --partition=nova_super  --cpus-per-task=16 --mem=190G --time=7-00:00:00 --error=err.chunk_contactcaller --wrap="
+
+        # cd /to/home/directory again incase the nested job fails to find directory
+
+        # module load python/anaconda/2.7.16
+
+        # Actual hicontactcall.py command, 
+        # python HiContactCall.py peakFile_hydara_${ID} tssFile_with_tss_and_3kbadj_peak.bed confile_all_tissues_sorted.txt output_hydara_bigpeak_annotation_chunk_backup_${ID} all
+
+         # output file will have the following format: ([PeakChrom, PeakPosition, tssChrom, tssPosition, tssDist, p_val, observed, expected, tssGene])
+
+#"
+#done
+
+###### End of Readme##### 
+
 import os
 import timing
 
