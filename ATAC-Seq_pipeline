@@ -1,7 +1,7 @@
 #This ATAC-seq pipeline has been adapted for use on commandline on the Easley HPC at Auburn University. 
 #Credit to Prof. Dr. Steven Van Belleghem (github.com/StevenVB12/) for the entirety of the code and help in troubleshooting.
 #These scripts are made to run on many files at once and are submitted as > sbatch -a 1-14 script1.sh 
-#All code should be reproducible for different samples of atac or chip-seq. Only sample names and paths should be changed unless different parameters
+#All code should be reproducible for different samples of ATC Only sample names and paths should be changed unless different parameters
 #are desired for specific programs (ie samtools, bowtie). 
 #if running on different HPC you may want to check that you have all programs needed (see below)
 
